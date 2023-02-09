@@ -1,0 +1,289 @@
+---
+title: "LSQR"
+author: "Raee Bhagat"
+date: "2022-12-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Function for Least Squares Regression Method 
+
+Performing least-squares regression is very straight-forward. The vector of coefficients can be solved using the equation:
+
+$$\vec{\beta} =(\mathbb{X}^T\mathbb{X})^{-1}\mathbb{X}^T\vec{y} $$
+
+where $\vec{y}$ is the vector of $n$ dependent observations and $\mathbb{X}$ is the $n \times m$ "model matrix" of $m$ predictor variables. You will write your own version of least-squares regression, that does the following:
+
+Requires a formula for the regression, the y-data, and the X data matrix (separately). For example, the most basic call to the function could be something like myLSQReg(y ~ x1 + x2, y_obs, x_data).
+
+
+```{r}
+library("plotrix")
+
+# lm_beta_h, lse_beta_h, y_hat
+
+lsq <- function(fam, y_obs, x_data, intercept = FALSE , nIt = 100){
+  
+  x_df <-  as.matrix(x_data)
+  
+  if(intercept == FALSE){
+    
+    beta_matrix <- matrix(NA,nrow = nIt, ncol = ncol(x_df))
+    
+    for(i in 1:nIt){
+      w <- sample(length(y_obs), replace = T)
+      beta_hat <- solve(t(x_df[w,]) %*% x_df[w,]) %*% t(x_df[w,]) %*% y_obs[w]
+      beta_matrix[i,] <- beta_hat
+    }
+    
+  Mean_beta <- matrix(NA, nrow = ncol(beta_matrix), ncol = 1)
+  SE_beta <- matrix(NA, nrow = ncol(beta_matrix), ncol = 1)
+  
+  for(i in 1:ncol(beta_matrix)){
+      mean <- mean(beta_matrix[,i])
+      se <- std.error(beta_matrix[,i])
+      Mean_beta[i,] <- mean
+      SE_beta[i,] <- se
+    }
+    
+    y_hat <- x_df %*% Mean_beta
+    rsq <- 1 - (sum(y_obs-y_hat)^2/sum(y_obs - mean(y_obs))^2)
+    sumerr <- sum(y_obs-y_hat)^2
+    x_used <- x_df
+}
+  
+  else{
+    
+    IntX_df <- cbind(1, x_df)
+    
+    beta_matrix <- matrix(NA, nrow = nIt, ncol = ncol(IntX_df))
+    
+     for(i in 1:nIt){
+      w <- sample(length(y_obs), replace = T)
+      beta_hat <- solve(t(IntX_df[w,]) %*% IntX_df[w,]) %*% t(IntX_df[w,]) %*% y_obs[w]
+      beta_matrix[i,] <- beta_hat
+     }
+    
+  Mean_beta <- matrix(NA, nrow = ncol(beta_matrix), ncol = 1)
+  SE_beta <- matrix(NA, nrow = ncol(beta_matrix), ncol = 1)
+    
+    for(i in 1:ncol(beta_matrix)){
+      mean <- mean(beta_matrix[,i])
+      se <- std.error(beta_matrix[,i])
+      Mean_beta[i,] <- mean
+      SE_beta[i,] <- se
+    }
+    
+    y_hat <- IntX_df %*% Mean_beta
+    rsq <- 1 - (sum(y_obs-y_hat)^2/sum(y_obs - mean(y_obs))^2)
+    sumerr <- sum(y_obs-y_hat)^2
+    x_used <- IntX_df
+}
+   result <- structure(list(Obs_df = y_obs, coefficients = beta_matrix, Mean_Coeff = as.vector(Mean_beta), SE_Coeff = as.vector(SE_beta), Prediction = as.vector(y_hat), used_df = x_used, Rsquare = rsq, Num_Iteration = nIt, Formula = fam), class = "lsqReg")
+   
+   on.exit(return(result), add = TRUE)
+}
+```
+
+
+```{r}
+x_data <- data.frame(x1 = rnorm(50, 5, 3),
+                     x2 = rnorm(50, -1, 4))
+
+y_obs <- 5 * x_data$x1 - 3 * x_data$x2 + rnorm(50, 0 , 2)
+
+```
+
+
+```{r}
+df1 <- lsq(fam = y_obs ~ x1 + x2, y_obs, x_data, intercept = TRUE)
+df2 <- lsq(fam = y_obs ~ x1 + x2, y_obs, x_data)
+```
+
+
+# Summary function for class "lsqReg"
+
+Create a summary() function for the lsqReg class that prints out the formula of the regression, a table of the estimates (with their standard errors), the number of iterations performed, and the $R^2$ of the mean model. (In other words, something akin to what you would get from running summary() on a standard lm model.)
+
+```{r}
+summary.lsqReg <- function(a){
+  
+  t <- data.frame(Estimates = a$Mean_Coeff, 
+                        SE = a$SE_Coeff,
+                        Num_Iterations = a$Num_Iteration,
+                        R_sq = a$Rsquare)
+  
+  on.exit(print(a$Formula), add=T)
+  on.exit(print(t), add=T)
+  on.exit(print(a$Num_Iteration), add=T)
+  on.exit(print(a$Rsquare), add=T)
+}
+```
+
+
+```{r}
+summary(df1)
+summary(df2)
+```
+
+#Plot Function for class "lsqReg"
+
+Create a plot() function for lsqReg class that, by default, plots the observed y-values versus the predicted y-values ($\hat{y}$) using the mean model along with a red 1-to-1 line. Note that the user should have the ability to specify plotting parameters (such as xlim) to plot using ..., the ability to specify the point color with an optional flag pointColor, and the ability to set the line color with an optional flag lineColor. Finally, give the user the optional flag iteration that chooses coefficients from a specific iteration, and plot the predictions of that model rather than the mean model. In the title of the all plots, give the equation for the predictions (i.e., it should display the correct parameter values).
+
+
+```{r}
+plot.lsqReg <- function(a, pointColor=NULL, lineColor=NULL, iteration=FALSE, ...){
+  
+  
+  
+  if(iteration==FALSE){
+    
+  argList <- list(...)
+  
+  
+  if(is.null(argList[["xlim"]])){
+    xlim <- c(0,max(a$Prediction))
+  }
+  
+  else{
+    xlim <- argList[["xlim"]]
+  }
+  
+  
+  if(is.null(argList[["ylim"]])){
+    ylim <- c(0,max(a$Obs_df))
+  }
+  
+  else{
+    ylim <- argList[["ylim"]]
+  }
+  
+  
+  if(is.null(pointColor)){
+    pointColor <- "black"
+  }
+  else{
+    pointColor <- pointColor
+  }
+  
+  
+  if(is.null(lineColor)){
+    lineColor <- "red"
+  }
+  else{
+    lineColor <- lineColor
+  }
+  
+  
+  plot(a$Prediction, a$Obs_df, xlab=expression(hat(y)), ylab="y",
+       main=paste0(a$Formula, collapse = ""), col=pointColor, 
+       xlim=xlim, ylim=ylim)
+  
+  abline(a=0, b=1, col=lineColor)
+  
+  }
+  else{
+    
+  newBeta <- as.matrix((a$coefficients[iteration,]), nrow=ncol(a$coefficients), ncol=1)
+
+  newPrediction <- a$used_df %*% newBeta
+    
+  argList <- list(...)
+  
+  
+  if(is.null(argList[["xlim"]])){
+    xlim <- c(0,max(newPrediction))
+  }
+  
+  else{
+    xlim <- argList[["xlim"]]
+  }
+  
+  
+  if(is.null(argList[["ylim"]])){
+    ylim <- c(0,max(a$Obs_df))
+  }
+  
+  else{
+    ylim <- argList[["ylim"]]
+  }
+  
+  
+  if(is.null(pointColor)){
+    pointColor <- "black"
+  }
+  else{
+    pointColor <- pointColor
+  }
+  
+  
+  if(is.null(lineColor)){
+    lineColor <- "red"
+  }
+  else{
+    lineColor <- lineColor
+  }
+  
+  
+  plot(newPrediction, a$Obs_df, xlab=expression(hat(y)), ylab="y",
+       main=paste0(a$Formula, collapse = ""), col=pointColor, 
+       xlim=xlim, ylim=ylim)
+  
+  abline(a=0, b=1, col=lineColor)
+    
+  }
+  
+}
+```
+
+```{r}
+plot(df1)
+plot(df1, pointColor = "purple", lineColor = "blue", xlim=c(-10,50), ylim=c(-20,50))
+plot(df1, iteration = 13)
+```
+
+
+```{r}
+plot(df2)
+plot(df2, pointColor = "red", lineColor = "pink", xlim=c(-10,50), ylim=c(-20,50))
+plot(df2, iteration = 13)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

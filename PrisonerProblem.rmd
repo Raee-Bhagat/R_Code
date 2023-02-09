@@ -1,0 +1,315 @@
+---
+title: "100 Prisoners Problem"
+author: "Raee Bhagat"
+date: "2022-11-18"
+output: html_document
+---
+# 100 Prisoners Problem
+The "100 prisoners problem" (of which a description can be found here) can be tested using simulation techniques. A video of the problem with a description can also be found here. The basic premise is that 100 prisoners must find their prisoner number in 100 boxes to be released; they each only get to open 50 boxes (i.e., the odds of any prisoner finding their number is, on the surface, 50/50). If any of the prisoners fail, they all fail and are kept in jail. Your tasks are as follows:
+
+```{r cars}
+library(dplyr)
+library(rlang)
+library(ggplot2)
+```
+
+Create a function that can run many instances of the prisoners problem. You should be able to specify: how many instances are to be run, how many prisoners (default 100), how many boxes (default 100), and the number of attempts each prison gets (default 50). The function should invisibly return the number of times the the prisoners escape and how many instances were run; when the function exits, it should print a message saying what percentage of the time the prisoners escaped.
+
+```{r}
+PP <- function(total_n, nPrisoners=100, nBoxes=100, nAttempts=50){
+
+  count = rep(0, total_n)
+
+  for(i in 1:total_n){
+    go = rep(F, total_n)
+    ranbox = sample(1:nBoxes, nBoxes)
+    
+    for(j in 1:nPrisoners){
+      base <- j
+      box <- 0
+      
+      while(box < nAttempts && !go[j]){
+        box = box + 1
+        go[j] <- ranbox[base]==j
+        base <- ranbox[base]
+      }
+    }
+    count[i] = sum(go)
+  }
+  nEscape = sum(count==nPrisoners)
+  prob = nEscape/total_n
+  
+  on.exit(message("of the ",
+                  paste0(total_n, collapse = ""), " the prisoners escaped ",
+                  paste0(nEscape, collapse = "")," times with probability ",
+                  paste0(prob, collapse = "")))
+  
+  # df <- as.data.frame(count)
+  # df$trials <- (1:total_n)
+  # 
+  # escaped <- vector("list", length = nrow(df))
+  # for(i in seq_along(df$count)){
+  #   if(df$count[i] == nPrisoners){
+  #     escaped[i] <- 1
+  #   }
+  #   else{escaped[i] <- 0}
+  # }
+  # df$escaped <- escaped
+  
+  PPDF <- data.frame(x=total_n, y=nEscape)
+  
+  # return(df)
+}
+```
+
+Run the function with increasing number of instances and plot the results (number of releases vs. instances) . Use 10, 20, 50, 100, 500, 1000, 5000, and 10000 as the number of instances to be tested.
+
+```{r}
+set.seed(1230)
+df100 <- PP(total_n = 100)
+df250 <- PP(total_n = 250)
+df500 <- PP(total_n = 500)
+df750 <- PP(total_n = 750)
+df1000 <- PP(total_n = 1000)
+df2500 <- PP(total_n = 2500)
+df5000 <- PP(total_n = 5000)
+
+```
+
+Using the binomial Metropolis Hastings MCMC sampler you programmed in the last homework, adapt the sampler such that you can pass it the number of escapes and the number of instances. Run 500 different iterations where you allow the number of instances to vary from 10 to 1000 (sampled randomly) to create the data set to be given to the sampler. Estimate the proportion of the time the prisoners are released and its standard error using the posterior distribution.
+
+```{r}
+#Binomial Distribution
+BinomDf <- data.frame(x=c(100, 250, 500, 750, 1000, 2500, 5000), y=c(36, 93, 127, 237, 303, 788, 1569))
+
+ggplot(BinomDf, aes(x=x, y=y)) + geom_point()+ geom_smooth() + 
+  labs(title="Instances Vs Releases")
+```
+
+```{r}
+#function:
+MCMC <- function(fam, n_It, df, sd.rw, x.sd=1, 
+              y.sd=1, ...){
+  
+  params <- list(...)
+  
+  if((is.null(params[["x.sd"]]))==F){
+    x.sd <- params[["x.sd"]]
+  }
+  else{x.sd <- 1}
+  
+  if((is.null(params[["y.sd"]]))==F){
+    y.sd <- params[["y.sd"]]
+  }
+  else{y.sd <- 1}
+  
+  if(fam=="binomial"){
+    
+    Chain=matrix(NA, nrow=n_It, ncol=2, 
+    dimnames=list(NULL, c("x", "y")))
+    
+    Chain[1, ]=c(0,0)
+    
+    for (i in 2:n_It){
+      
+      p_x=params[["x.mu"]]+rnorm(1, mean=0, sd=sd.rw)
+      p_y=params[["y.mu"]]+rnorm(1, mean=0, sd=sd.rw)
+      
+      L2x=sum(dbinom(df[i-1,"x"],
+      size=(df[i, "x"]), prob = params[["x.mu"]], log = T))
+      L2y=sum(dbinom(df[i-1,"x"], 
+      size=(df[i, "x"]), prob = params[["y.mu"]], log = T))
+      
+      L1x=sum(dbinom(p_x, size=(df[i, "x"]), 
+      prob = params[["x.mu"]], log = T))
+      L1y=sum(dbinom(p_y, size=(df[i, "x"]), 
+      prob = params[["y.mu"]], log = T))
+      
+      alpha_x=L1x/L2x
+      alpha_y=L1y/L2y
+      
+      u <- log(runif(1))    
+      
+      if(is_true(u < alpha_x)){
+        Chain[i,"x"] <- p_x
+      }
+      else{
+        Chain[i,"x"] <- Chain[i-1,"x"]
+      }
+      
+      if(is_true(u < alpha_y)){
+        Chain[i,"y"] <- p_y
+      }
+      else {
+        Chain[i,"y"] <- Chain[i-1,"y"]
+      }
+      
+    }
+    return(Chain)
+    on.exit(print(Chain))
+  }
+  
+  
+  else if(fam=="gaussian"){
+    
+    Chain=matrix(NA, nrow=n_It, ncol=2, 
+    dimnames=list(NULL, c("x", "y")))
+    
+    Chain[1, ]=c(0,0)
+    
+    for (i in 2:n_It){
+      
+      p_x=params[["x.mu"]]+rnorm(1, mean=0, sd=sd.rw)
+      p_y=params[["y.mu"]]+rnorm(1, mean=0, sd=sd.rw)
+      
+      L2x=sum(dnorm(df[i-1,"x"], mean = params[["x.mu"]], 
+      sd=x.sd,
+      log = T))
+      L2y=sum(dnorm(df[i-1,"y"], mean = params[["y.mu"]],
+      sd=y.sd,
+      log = T))
+      
+      L1x=sum(dnorm(p_x, mean = params[["x.mu"]], sd=x.sd,
+      log = T))
+      L1y=sum(dnorm(p_y, mean = params[["y.mu"]], sd=y.sd,
+      log = T))
+      
+      alpha_x=L1x/L2x
+      alpha_y=L1y/L2y
+      
+      u <- log(runif(1))    
+      
+      if(is_true(u < alpha_x)){
+        Chain[i,"x"] <- p_x
+      }
+      else{
+        Chain[i,"x"] <- Chain[i-1,"x"]
+      }
+      
+      if(is_true(u < alpha_y)){
+        Chain[i,"y"] <- p_y
+      }
+      else {
+        Chain[i,"y"] <- Chain[i-1,"y"]
+      }
+      
+    }
+    return(Chain)
+    on.exit(print(Chain))
+    }
+  
+  
+  else if(fam=="poisson"){
+    
+    Chain=matrix(NA, nrow=n_It, ncol=2, 
+    dimnames=list(NULL, c("x", "y")))
+    
+    Chain[1, ]=c(0,0)
+    
+    for (i in 2:n_It){
+      
+      p_x=params[["x.mu"]]+rnorm(1, mean=0, sd=sd.rw)
+      p_y=params[["y.mu"]]+rnorm(1, mean=0, sd=sd.rw)
+      
+      L2x=sum(dpois(df[i-1,"x"], lambda = params[["x.mu"]],
+      log = T))
+      L2y=sum(dpois(df[i-1,"y"], lambda = params[["y.mu"]], 
+      log = T))
+      
+      L1x=sum(dpois(p_x, lambda = params[["x.mu"]], log = T))
+      L1y=sum(dpois(p_y, lambda = params[["y.mu"]], log = T))
+      
+      alpha_x=L1x/L2x
+      alpha_y=L1y/L2y
+      
+      u <- log(runif(1))    
+      
+      if(is_true(u < alpha_x)){
+        Chain[i,"x"] <- p_x
+      }
+      else{
+        Chain[i,"x"] <- Chain[i-1,"x"]
+      }
+      
+      if(is_true(u < alpha_y)){
+        Chain[i,"y"] <- p_y
+      }
+      else {
+        Chain[i,"y"] <- Chain[i-1,"y"]
+      }
+      
+    }
+    return(Chain)
+    on.exit(print(Chain))
+    }
+  
+  
+  else{print("Valid parameter is missing.")}
+  
+}
+
+```
+
+```{r}
+
+NewDf <- data.frame(x=rep(NA, 500), y=rep(NA, 500))
+for (i in 1:500){
+  Result <- PP(total_n = sample(100:1000, 1))
+  NewDf[i,1] <- Result$x
+  NewDf[i,2] <- Result$y
+}
+
+NewDf$y <- NewDf$y/NewDf$x
+```
+
+
+```{r}
+PBinom <- MCMC(fam ="binomial", n_It = 500, df = NewDf, sd.rw=0.1, x.mu=250, y.mu=0.3)
+
+
+#Finding the estimate of proportion of escapes and the standard error:
+MeanMCMC <- mean(PBinom[,"y"][seq(1, 500, by=10)])
+StandardError <- sqrt(var(PBinom[,"y"][seq(1, 500, by=10)]))
+
+```
+
+Create a plot that show the effects of varying the proportion of boxes each prisoner gets to open.
+
+```{r}
+
+PP(total_n = 100, nAttempts = 20)#0
+PP(total_n = 100, nAttempts = 30)#7
+PP(total_n = 100, nAttempts = 40)#13
+PP(total_n = 100, nAttempts = 50)#37
+PP(total_n = 100, nAttempts = 60)#46
+PP(total_n = 100, nAttempts = 70)#61
+PP(total_n = 100, nAttempts = 80)#78
+
+Attemptdf <- data.frame(x=c(20, 30, 40, 50, 60, 70, 80), y=c(0, 7, 13, 37, 46, 61, 78))
+
+ggplot(Attemptdf, aes(x=x, y=y)) + geom_point() + theme_classic() +
+  geom_smooth() + labs(title = "Effect of varying the proportion of boxes")
+
+```
+
+Create a plot that shows the effect of changing the number of boxes per prisoner (in the default there are 100 boxes for 100 prisoners; try changing the number of boxes and slips with numbers on them to, e.g., 150, 175, 200, … while leaving the number of prisoners at 100).
+
+```{r}
+
+PP(total_n = 100, nPrisoners = 100, nBoxes= 100)#30
+PP(total_n = 100, nPrisoners = 100, nBoxes=125)#10
+PP(total_n = 100, nPrisoners = 100, nBoxes = 150)#5
+PP(total_n = 100, nPrisoners = 100, nBoxes= 175)#2
+PP(total_n = 100, nPrisoners = 100, nBoxes= 200)#1
+PP(total_n = 100, nPrisoners = 100, nBoxes = 225)#0
+
+Boxdf <- data.frame(x=c(100, 125, 150, 175, 200, 225), y=c(30, 10, 5, 2, 1, 0))
+
+ggplot(Boxdf, aes(x=x, y=y)) + geom_point()+ geom_smooth() + theme_bw() +
+  labs(title="Boxes Vs Releases", x="Number of Boxes", y="Number of Releases")
+
+```
+
+
+
+
