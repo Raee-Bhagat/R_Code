@@ -1,0 +1,428 @@
+---
+title: "550 Project"
+author: "Raee"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+#use qqPlot(fit) to select the outliers frome model
+
+```{r setup, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE)
+library(car)
+library(ggplot2)
+```
+
+
+```{r}
+#reading the dataset
+ds_salaries <- read.csv("C:/Users/bhag9738/OneDrive - University of Idaho/STAT 550 Regression/ds_salaries.csv")
+head(ds_salaries)
+```
+
+```{r}
+dim(ds_salaries)
+
+#checking NA
+colSums(is.na(ds_salaries))
+
+#NO NA's
+```
+
+
+```{r}
+library(dplyr)
+ds <- ds_salaries %>%
+  dplyr::select("salary","job_title","experience_level","company_size","work_year") %>%
+  filter(job_title == 'Data Scientist') %>%
+  arrange(desc(salary))%>%
+  slice(21:470)
+
+da <- ds_salaries %>%
+  dplyr::select("salary","job_title","experience_level","company_size","work_year") %>%
+  filter(job_title == 'Data Analyst') %>%
+  arrange(desc(salary))%>%
+  slice(21:470)
+
+de <- ds_salaries %>%
+  dplyr::select("salary","job_title","experience_level","company_size","work_year") %>%
+  filter(job_title == 'Data Engineer') %>% 
+  arrange(desc(salary)) %>%
+  slice(21:470)
+
+s <- as.data.frame(bind_rows(list(ds,da,de)))
+```
+
+
+```{r}
+s$job_title <- as.factor(s$job_title)
+
+#looking at salary vs job type plot
+plot(s$job_title, s$salary)
+
+#salary had wide range so taking log(salary) and plotting again
+plot(s$job_title, log(s$salary), col= "lightpink2", xlab="Job Type", ylab="salary",
+     main = "Boxplot of Salary Distribution for DA, DE and DS")
+
+#pale turquoise = "paleturquoise3"
+#col = "skyblue4"
+```
+
+Median salary of data engineer and data scientist are almost same. The median salary of data analyst are lower than that of data engineer and data scientist. Many outliers are observed in the data.
+
+```{r}
+summary(s)
+
+head(s)
+
+s$experience_level <- as.factor(s$experience_level)
+s$company_size <- as.factor(s$company_size)
+s$work_year <- as.factor(s$work_year)
+s$job_title <- as.factor(s$job_title)
+```
+
+```{r}
+#checking model assumptions
+hist(s$salary, col = "skyblue4", xlab = "Salary", main = "Histogram of Salary")
+
+hist(log10(s$salary),col = "paleturquoise3", xlab = "log10(Salary)",main = "Histogram of Salary")
+```
+
+
+#### The Multiple Regression Assumptions
+
+```{r}
+# fitting linear regression model
+fit <- lm(log10(salary)~ job_title + experience_level + company_size + work_year, data = s)
+summary(fit)
+```
+
+```{r}
+plot(fit)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+x_fit <- fit$fitted.values
+y_fit <- fit$residuals
+job_fit_sd <-  "DS"
+fit_df <- data.frame(x_fit, y_fit)
+
+fit_df$Job_title <- ifelse(1:nrow(fit_df)<= 450, "DS",ifelse(450:nrow(fit_df)<=900, "DE","DA"))
+head(fit_df)
+tail(fit_df)
+
+ggplot(fit_df, aes(x_fit, y_fit))+
+  ggtitle("Residuals vs Fitted plot for Model 1")+
+  xlab("Fitted values")+
+  ylab("Residuals")+
+  geom_point(data = fit_df,aes(x_fit, y_fit, col = Job_title))+
+  scale_color_manual(values = c("DA" = "lightpink2", "DE" = "paleturquoise3", "DS" ="skyblue4"))+
+  geom_smooth(method = 'loess',col="black",se = FALSE, linetype = 3)+
+  theme_bw()
+```
+
+
+```{r}
+n <- 1350
+k <- 10
+jt_de <- ifelse(s$job_title=="Data Engineer", 1,0)
+jt_ds <- ifelse(s$job_title=="Data Scientist", 1,0)
+el_ex <- ifelse(s$experience_level=="EX", 1,0)
+el_mi <- ifelse(s$experience_level=="MI", 1,0)
+el_se <- ifelse(s$experience_level=="SE", 1,0)
+cs_m <- ifelse(s$company_size=="M", 1,0)
+cs_s <- ifelse(s$company_size=="S", 1,0)
+wy_2021 <- ifelse(s$work_year=="2021", 1,0)
+wy_2022 <- ifelse(s$work_year=="2022", 1,0)
+wy_2023 <- ifelse(s$work_year=="2023", 1,0)
+
+model <- as.matrix(cbind(rep(1,n), jt_de, jt_ds, el_ex,el_mi, el_se, cs_m, cs_s, wy_2021, wy_2022, wy_2023))
+
+colnames(model) <- c("(Intercept)" ,"DE", "DS", "EX","MI", "SE", "M","S", "2021","2022", "2023")
+
+X1 <- model
+
+y1 <- log10(s$salary)
+
+b1 <- solve(t(X1) %*% X1) %*% t(X1) %*% y1
+b1
+```
+
+```{r}
+
+# y hat values for model 1
+y_hat1 <- fit$fitted.values
+
+# standard error
+se1 <- sqrt(sum((y1-y_hat1)^2)/(n-k-1))
+
+# vjj values
+v1 <- c()
+for(i in 0:k+1){
+  v1[i] <- as.matrix(solve(t(X1) %*% X1)[i,i])
+} 
+
+# calculating t statistics values for each coefficients
+t1 <- c()
+for(i in 0:k+1){
+  t1[i] <- b1[i,]/(se1*sqrt(v1[i]))
+}
+
+# printing t values
+t1
+
+# calculating p values
+p1 <- c()
+for(i in 0:k+1){
+  p1[i] <- 2*pt(q = t1[i], df = (n-k-1), lower.tail = FALSE)
+}
+p1
+
+```
+
+```{r}
+# bonferroni correction
+alpha = 0.05
+alpha_new = alpha/10
+
+#0.005
+alpha_new
+```
+
+```{r}
+# r squared value for model 1
+TSS1 <- sum((y1-mean(y1))^2)
+
+RegSS1 <- sum((y_hat1-mean(y1))^2)
+
+rsq1 <- RegSS1/TSS1
+rsq1
+```
+
+
+##################################################################################
+```{r}
+# fitting linear regression model 
+
+s1 <- s[c(-2,-1,-4),]
+
+fit1 <- lm(log10(salary)~ job_title + experience_level + company_size + work_year, data = s[c(-2,-1,-4),])
+summary(fit1)
+```
+
+```{r}
+plot(fit1)
+```
+
+
+```{r}
+x_fit1 <- fit1$fitted.values
+y_fit1 <- fit1$residuals
+job_fit_sd1 <-  "DS"
+fit_df1 <- data.frame(x_fit1, y_fit1)
+
+fit_df1$Job_title <- ifelse(1:nrow(fit_df1)<= 450, "DS",ifelse(450:nrow(fit_df1)<=900, "DE","DA"))
+head(fit_df1)
+tail(fit_df1)
+
+ggplot(fit_df1, aes(x_fit1, y_fit1))+
+  ggtitle("Residuals vs Fitted plot for Model 2")+
+  xlab("Fitted values")+
+  ylab("Residuals")+
+  geom_point(data = fit_df1,aes(x_fit1, y_fit1, col = Job_title))+
+  scale_color_manual(values = c("DA" = "lightpink2", "DE" = "paleturquoise3", "DS" ="skyblue4"))+
+  geom_smooth(method = 'loess',col="black",se = FALSE, linetype = 3)+
+  theme_bw()
+```
+
+```{r}
+n1 <- 1347
+k1 <- 10
+jt_de1 <- ifelse(s1$job_title=="Data Engineer", 1,0)
+jt_ds1 <- ifelse(s1$job_title=="Data Scientist", 1,0)
+el_ex1 <- ifelse(s1$experience_level=="EX", 1,0)
+el_mi1 <- ifelse(s1$experience_level=="MI", 1,0)
+el_se1 <- ifelse(s1$experience_level=="SE", 1,0)
+cs_m1 <- ifelse(s1$company_size=="M", 1,0)
+cs_s1 <- ifelse(s1$company_size=="S", 1,0)
+wy1_2021 <- ifelse(s1$work_year=="2021", 1,0)
+wy1_2022 <- ifelse(s1$work_year=="2022", 1,0)
+wy1_2023 <- ifelse(s1$work_year=="2023", 1,0)
+
+model1 <- as.matrix(cbind(rep(1,n1), jt_de1, jt_ds1, el_ex1,el_mi1, el_se1, cs_m1, cs_s1, wy1_2021, wy1_2022, wy1_2023))
+
+colnames(model1) <- c("(Intercept)" ,"DE", "DS", "EX","MI", "SE", "M","S", "2021","2022", "2023")
+
+X2 <- model1
+
+y2 <- log10(s1$salary)
+
+b2 <- solve(t(X2) %*% X2) %*% t(X2) %*% y2
+b2
+```
+
+
+```{r}
+# y hat values for model 2
+y_hat2 <- fit1$fitted.values
+
+# standard error
+se2 <- sqrt(sum((y2-y_hat2)^2)/(n1-k1-1))
+
+# vjj values
+v2 <- c()
+for(i in 0:k1+1){
+  v2[i] <- as.matrix(solve(t(X2) %*% X2)[i,i])
+} 
+
+# calculating t statistics values for each coefficients
+t2 <- c()
+for(i in 0:k1+1){
+  t2[i] <- b2[i,]/(se2*sqrt(v2[i]))
+}
+
+# printing t values
+t2
+
+# calculating p values
+p2 <- c()
+for(i in 0:k1+1){
+  p2[i] <- 2*pt(q = t2[i], df = (n1-k1-1), lower.tail = FALSE)
+}
+p2
+```
+
+
+```{r}
+# r squared value for model 2
+TSS2 <- sum((y2-mean(y2))^2)
+
+RegSS2 <- sum((y_hat2-mean(y2))^2)
+
+rsq2 <- RegSS2/TSS2
+rsq2
+```
+
+
+
+######################################################################################
+
+```{r}
+s2 <- s[c(-1,-3,-2,-5,-6,-4,-455,-457,-7,-451,-452),]
+
+fit2 <- lm(log10(salary)~ job_title + experience_level + company_size + work_year, data = s[c(-1,-3,-2,-5,-6,-4,-455,-457,-7,-451,-452),])
+summary(fit2)
+```
+
+```{r}
+plot(fit2)
+```
+
+
+```{r}
+x_fit2 <- fit2$fitted.values
+y_fit2 <- fit2$residuals
+job_fit_sd2 <-  "DS"
+fit_df2 <- data.frame(x_fit2, y_fit2)
+
+fit_df2$Job_title <- ifelse(1:nrow(fit_df2)<= 450, "DS",ifelse(450:nrow(fit_df2)<=900, "DE","DA"))
+head(fit_df2)
+tail(fit_df2)
+
+ggplot(fit_df2, aes(x_fit2, y_fit2))+
+  ggtitle("Residuals vs Fitted plot for Model 3")+
+  xlab("Fitted values")+
+  ylab("Residuals")+
+  geom_point(data = fit_df2,aes(x_fit2, y_fit2, col = Job_title))+
+  scale_color_manual(values = c("DA" = "lightpink2", "DE" = "paleturquoise3", "DS" ="skyblue4"))+
+  geom_smooth(method = 'loess',col="black",se = FALSE, linetype = 3)+
+  theme_bw()
+```
+
+```{r}
+n2 <- 1339
+k2 <- 10
+jt_de2 <- ifelse(s2$job_title=="Data Engineer", 1,0)
+jt_ds2 <- ifelse(s2$job_title=="Data Scientist", 1,0)
+el_ex2 <- ifelse(s2$experience_level=="EX", 1,0)
+el_mi2 <- ifelse(s2$experience_level=="MI", 1,0)
+el_se2 <- ifelse(s2$experience_level=="SE", 1,0)
+cs_m2 <- ifelse(s2$company_size=="M", 1,0)
+cs_s2 <- ifelse(s2$company_size=="S", 1,0)
+wy2_2021 <- ifelse(s2$work_year=="2021", 1,0)
+wy2_2022 <- ifelse(s2$work_year=="2022", 1,0)
+wy2_2023 <- ifelse(s2$work_year=="2023", 1,0)
+
+model2 <- as.matrix(cbind(rep(1,n2), jt_de2, jt_ds2, el_ex2,el_mi2, el_se2, cs_m2, cs_s2, wy2_2021, wy2_2022, wy2_2023))
+
+colnames(model1) <- c("(Intercept)" ,"DE", "DS", "EX","MI", "SE", "M","S", "2021","2022", "2023")
+
+X3 <- model2
+
+y3 <- log10(s2$salary)
+
+b3 <- solve(t(X3) %*% X3) %*% t(X3) %*% y3
+b3
+```
+
+
+```{r}
+# y hat values for model 2
+y_hat3 <- fit2$fitted.values
+
+# standard error
+se3 <- sqrt(sum((y3-y_hat3)^2)/(n2-k2-1))
+
+# vjj values
+v3 <- c()
+for(i in 0:k2+1){
+  v3[i] <- as.matrix(solve(t(X3) %*% X3)[i,i])
+} 
+
+# calculating t statistics values for each coefficients
+t3 <- c()
+for(i in 0:k2+1){
+  t3[i] <- b3[i,]/(se3*sqrt(v3[i]))
+}
+
+# printing t values
+t3
+
+# calculating p values
+p3 <- c()
+for(i in 0:k2+1){
+  p3[i] <- 2*pt(q = t3[i], df = (n2-k2-1), lower.tail = FALSE)
+}
+p3
+```
+
+
+
+```{r}
+# r squared value for model 3
+TSS3 <- sum((y3-mean(y3))^2)
+
+RegSS3 <- sum((y_hat3-mean(y3))^2)
+
+rsq3 <- RegSS3/TSS3
+rsq3
+```
+##################################################################################
+
+```{r}
+# loglikelihood of models
+logLik(fit)
+logLik(fit1)
+logLik(fit2)
+```
+
+
+
+
+
+
+
