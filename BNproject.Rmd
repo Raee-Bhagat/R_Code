@@ -1,0 +1,433 @@
+```{r}
+rm(list = ls())
+library(DAAG)
+library(tidyverse)
+library(visNetwork)
+library(bnlearn)
+library(ggplot2)
+library(MASS)
+```
+
+```{r}
+#plot function
+plot.network <- function(structure, ht = "400px", cols = "darkturquoise", labels = nodes(structure)){
+  if(is.null(labels)) labels <- rep("", length(nodes(structure)))
+  nodes <- data.frame(id = nodes(structure),
+                      label = labels,
+                      color = cols,
+                      shadow = TRUE
+  )
+  
+  edges <- data.frame(from = structure$arcs[,1],
+                      to = structure$arcs[,2],
+                      arrows = "to",
+                      smooth = FALSE,
+                      shadow = TRUE,
+                      color = "black")
+  
+  return(visNetwork(nodes, edges, height = ht, width = "100%"))
+}
+#---------------------------------------------------------------------------------
+```
+
+
+
+```{r}
+#ais data from the DAAG package
+ais_1 <- ais %>% dplyr::select(hg, hc, rcc) 
+#set structure
+bn_struct1 <- model2network("[hg][rcc|hg][hc|hg:rcc]")
+bn_struct1
+#Using plot network 
+plot.network(bn_struct1)
+
+#correlation matrix...error ais_1 has only 3 variables, here we used all
+#cor(ais[,c('hg', 'rcc', 'hc', 'ht', 'lbm', 'bmi', 'wt','pcBfat')])
+
+#fit the parameters of a Bayesian Network conditional on its structure
+#and gives data set
+bn_mod1 <- bn.fit(bn_struct1, data = ais_1, method = "mle")
+#view conditional probability tables and Guassian Distribution
+bn_mod1
+#simulate new data 
+ais_sim1 <- rbn(bn_mod1, 202)
+
+set.seed(120)
+#means of hg, hc and rcc
+mu_x <- mean(ais_sim1$hg)
+mu_y <- mean(ais_sim1$hc)
+mu_z <- mean(ais_sim1$rcc)
+
+#mean matrix
+mu1 <- c(mu_x, mu_y, mu_z)
+
+#variance-covariance matrix for hg, hc and rcc
+cov.matrix1 <- cov(ais_sim1[,c('hg','hc','rcc')])
+
+set.seed(120)
+#multivariate normal 
+x_y1 <- mvrnorm(n = 202, mu1, cov.matrix1)
+
+#view(x_y1)
+summary(x_y1)
+summary(ais_1)
+
+d1 <- data.frame(x_y1)
+
+(plot1 <- ggplot()+
+  geom_point(data = d1, mapping = aes(x = hc, y =rcc), color = "red", size=1)+
+  geom_point(data = ais_1, mapping = aes(x = hc, y = rcc), color = "blue", size=1)+
+  labs(x = "hc", y = "rcc", title = "hc vs rcc"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d1, mapping = aes(x = hg, y =rcc), color = "red", size=1)+
+  geom_point(data = ais_1, mapping = aes(x = hg, y = rcc), color = "blue", size=1)+
+  labs(x = "hg", y = "rcc", title = "hg vs rcc"))
+
+(plot3 <- ggplot()+
+  geom_point(data = d1, mapping = aes(x = hg, y =hc), color = "red", size=1)+
+  geom_point(data = ais_1, mapping = aes(x = hg, y = hc), color = "blue", size=1)+
+  labs(x = "hg", y = "hc", title = "hg vs hc"))
+
+cor(ais_1[,c('hg', 'rcc', 'hc')])
+cor(x_y1[,c('hg', 'rcc', 'hc')])
+
+```
+
+
+```{r}
+#Adding pcBfat with hg and rcc
+
+#ais data from the DAAG package
+ais_2 <- ais %>% dplyr::select(hg, hc, rcc, pcBfat) 
+
+#set structure
+bn_struct2 <- model2network("[pcBfat][hg|pcBfat][rcc|hg][hc|hg:rcc]")
+bn_struct2
+#Using plot network 
+plot.network(bn_struct2)
+
+bn_mod2 <- bn.fit(bn_struct2, data = ais_2, method = "mle")
+#view conditional probability tables and Guassian Distribution
+bn_mod2
+#simulate new data 
+ais_sim1 <- rbn(bn_mod2, 202)
+
+set.seed(120)
+#means of hg, hc and rcc
+mu_x <- mean(ais_sim1$hg)
+mu_y <- mean(ais_sim1$hc)
+mu_z <- mean(ais_sim1$rcc)
+mu_u <- mean(ais_sim1$pcBfat)
+
+#mean matrix
+mu1 <- c(mu_x, mu_y, mu_z, mu_u)
+
+#variance-covariance matrix for hg, hc and rcc
+cov.matrix2 <- cov(ais_sim1[,c('hg', 'hc','rcc','pcBfat')])
+
+set.seed(120)
+#multivariate normal 
+x_y1 <- mvrnorm(n = 202, mu1, cov.matrix2)
+
+#view(x_y1)
+summary(x_y1)
+summary(ais_2)
+
+d2 <- data.frame(x_y1)
+
+(plot1 <- ggplot()+
+  geom_point(data = d2, mapping = aes(x = hc, y =rcc), color = "red", size=1)+
+  geom_point(data = ais_2, mapping = aes(x = hc, y = rcc), color = "blue", size=1)+
+  labs(x = "hc", y = "rcc", title = "hc vs rcc"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d2, mapping = aes(x = hg, y =rcc), color = "red", size=1)+
+  geom_point(data = ais_2, mapping = aes(x = hg, y = rcc), color = "blue", size=1)+
+  labs(x = "hg", y = "rcc", title = "hg vs rcc"))
+
+(plot3 <- ggplot()+
+  geom_point(data = d2, mapping = aes(x = hg, y =hc), color = "red", size=1)+
+  geom_point(data = ais_2, mapping = aes(x = hg, y = hc), color = "blue", size=1)+
+  labs(x = "hg", y = "hc", title = "hg vs hc"))
+
+(plot4 <- ggplot()+
+  geom_point(data = d2, mapping = aes(x = hg, y =pcBfat), color = "red", size=1)+
+  geom_point(data = ais_2, mapping = aes(x = hg, y = pcBfat), color = "blue", size=1)+
+  labs(x = "hg", y = "pcBfat", title = "hg vs pcBfat"))
+
+cor(ais_2[,c('hg', 'rcc', 'hc','pcBfat')])
+cor(x_y1[,c('hg', 'rcc', 'hc','pcBfat')])
+
+```
+
+
+```{r}
+# mfrow3d(1, 2)
+# plot1 <- plot3d(x_y1[,1],x_y1[,2],x_y1[,3], 
+#                 xlab ="hg", ylab ="hc", zlab = "rcc",
+#                 col = "red", radius =1,
+#                 xlim = c(11,20), ylim = c(35,60), zlim = c(3.5,7))
+# plot2 <- plot3d(ais_1[,2],ais_1[,4],ais_1[,3], 
+#                 xlab ="hg", ylab ="hc", zlab = "rcc", 
+#                 col="blue", radius=1,
+#                 xlim = c(11,20), ylim = c(35,60), zlim = c(3.5,7))
+```
+
+```{r}
+#4 nodes 
+#ais data from the DAAG package
+ais_3 <- ais %>% dplyr::select(ht, bmi, wt, lbm) 
+#set structure
+bn_struct3 <- model2network("[wt][ht|wt][lbm|wt][bmi|wt]")
+bn_struct3
+#Using plot network 
+plot.network(bn_struct3)
+
+#fit the parameters of a Bayesian Network conditional on its structure
+#and gives data set
+bn_mod3 <- bn.fit(bn_struct3, data = ais_3, method = "mle")
+#view conditional probability tables and Guassian Distribution
+bn_mod3
+#simulate new data 
+ais_sim3 <- rbn(bn_mod3, 202)
+
+set.seed(120)
+#means of hg, hc and rcc
+mu_x <- mean(ais_sim3$bmi)
+mu_y <- mean(ais_sim3$wt)
+mu_z <- mean(ais_sim3$lbm)
+mu_u <- mean(ais_sim3$ht)
+#mean matrix
+mu3 <- c(mu_u, mu_x, mu_y, mu_z)
+
+#variance-covariance matrix for hg, hc and rcc
+cov.matrix3 <- cov(ais_sim3[,c('ht','bmi','wt','lbm')])
+
+#multivariate normal 
+x_y3 <- mvrnorm(n = 202, mu3, cov.matrix3)
+
+summary(x_y3)
+summary(ais_3)
+
+d3 <- data.frame(x_y3)
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = lbm, y =ht), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = lbm, y =ht), color = "blue", size=1)+
+  labs(x = "lbm", y = "ht", title = "lbm vs ht"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = bmi, y =wt), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = bmi, y = wt), color = "blue", size=1)+
+  labs(x = "bmi", y = "wt", title = "bmi vs wt"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = bmi, y =lbm), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = bmi, y = lbm), color = "blue", size=1)+
+  labs(x = "bmi", y = "lbm", title = "bmi vs lbm"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = lbm, y =wt), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = lbm, y = wt), color = "blue", size=1)+
+  labs(x = "lbm", y = "wt", title = "lbm vs wt"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = ht, y =wt), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = ht, y = wt), color = "blue", size=1)+
+  labs(x = "ht", y = "wt", title = "ht vs wt"))
+cor(ais_3[,c('ht', 'lbm', 'bmi', 'wt')])
+set.seed(100)
+cor(x_y3[,c('ht', 'lbm', 'bmi', 'wt')])
+
+```
+
+
+```{r}
+#5 nodes...adding pcBfat
+#ais data from the DAAG package
+ais_4 <- ais %>% dplyr::select(ht, bmi, wt, lbm) 
+#set structure
+bn_struct4 <- model2network("[wt][ht|wt][lbm|wt:ht][bmi|wt:lbm]")
+bn_struct4
+#Using plot network 
+plot.network(bn_struct4)
+
+#fit the parameters of a Bayesian Network conditional on its structure
+#and gives data set
+bn_mod3 <- bn.fit(bn_struct4, data = ais_4, method = "mle")
+#view conditional probability tables and Guassian Distribution
+bn_mod3
+#simulate new data 
+ais_sim4 <- rbn(bn_mod3, 202)
+
+set.seed(120)
+#means of variables
+mu_x <- mean(ais_sim4$bmi)
+mu_y <- mean(ais_sim4$wt)
+mu_z <- mean(ais_sim4$lbm)
+mu_u <- mean(ais_sim4$ht)
+#mu_v <- mean(ais_sim4$pcBfat)
+
+#mean matrix
+mu4 <- c(mu_u, mu_x, mu_y, mu_z)
+
+#variance-covariance matrix 
+cov.matrix4 <- cov(ais_sim4[,c('ht','bmi','wt','lbm')])
+
+#multivariate normal 
+x_y4 <- mvrnorm(n = 202, mu4, cov.matrix4)
+
+summary(x_y4)
+summary(ais_4)
+
+d4 <- data.frame(x_y4)
+
+(plot2 <- ggplot()+
+  geom_point(data = d4, mapping = aes(x = lbm, y =ht), color = "red", size=1)+
+  geom_point(data = ais_4, mapping = aes(x = lbm, y =ht), color = "blue", size=1)+
+  labs(x = "lbm", y = "ht", title = "lbm vs ht"))
+
+
+cor(ais_4[,c('ht','bmi','wt','lbm')])
+cor(x_y4[,c('ht','bmi','wt','lbm')])
+```
+
+
+
+```{r}
+#ggplot(ais, aes(x = sport, y = hg, fill = sport)) + geom_boxplot() + scale_fill_manual(values = #colorRampPalette(king.yna)(10))
+#ais_f <- c(ais)
+#ais_sim1f <- c(ais_sim1)
+#ais_sim2f <- c(ais_sim2)
+#data2 <- data.frame(ais_f, ais_sim1f)
+#names(data2)<- c("hg","hc","rcc")
+#barplot(height=cbind(ais_f$hc, ais_sim1f$hc),ylab="number", beside=TRUE,col=rainbow (2))
+#legend ("topleft",c("hc","hc"),cex=3.0,bty="n",fill=rainbow (2))
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = bmi, y =wt), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = bmi, y = wt), color = "blue", size=1)+
+  labs(x = "bmi", y = "wt", title = "bmi vs wt"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = bmi, y =lbm), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = bmi, y = lbm), color = "blue", size=1)+
+  labs(x = "bmi", y = "lbm", title = "bmi vs lbm"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = lbm, y =wt), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = lbm, y = wt), color = "blue", size=1)+
+  labs(x = "lbm", y = "wt", title = "lbm vs wt"))
+
+(plot2 <- ggplot()+
+  geom_point(data = d3, mapping = aes(x = ht, y =wt), color = "red", size=1)+
+  geom_point(data = ais_3, mapping = aes(x = ht, y = wt), color = "blue", size=1)+
+  labs(x = "ht", y = "wt", title = "ht vs wt"))
+
+```
+
+
+```{r}
+#8 Nodes
+#ais data from the DAAG package
+ais_3 <- ais %>% dplyr::select(hg, rcc, hc, ht, lbm, bmi, wt, pcBfat) 
+#set structure
+bn_struct3 <- model2network("[pcBfat][hg][ht][wt|pcBfat:ht][lbm|ht:wt][bmi|lbm:wt][rcc|hg][hc|hg:rcc]")
+bn_struct3
+#Using plot network 
+plot.network(bn_struct3)
+
+
+
+#fit the parameters of a Bayesian Network conditional on its structure
+#and gives data set
+bn_mod3 <- bn.fit(bn_struct3, data = ais_3, method = "mle")
+#view conditional probability tables and Guassian Distribution
+bn_mod3
+#simulate new data 
+ais_sim3 <- rbn(bn_mod3, 202)
+
+set.seed(120)
+#means of ht, wt, lbm, bmi, hg, hc, rcc, pcBfat
+mu_x <- mean(ais_sim3$lbm)
+mu_y <- mean(ais_sim3$wt)
+mu_z <- mean(ais_sim3$ht)
+mu_a <- mean(ais_sim3$bmi)
+mu_b <- mean(ais_sim3$hg)
+mu_c <- mean(ais_sim3$hc)
+mu_d <- mean(ais_sim3$rcc)
+mu_e <- mean(ais_sim3$pcBfat)
+
+#mean matrix
+mu3 <- c(mu_b, mu_d, mu_c, mu_z, mu_x, mu_a, mu_y, mu_e)
+
+#variance-covariance matrix for hg, hc and rcc
+cov.matrix3 <- cov(ais_sim3[,c('hg','rcc','hc','ht','lbm','bmi','wt','pcBfat')])
+
+#multivariate normal 
+x_y3 <- mvrnorm(n = 202, mu3, cov.matrix3)
+
+cor(x_y3[,c('hg', 'rcc', 'hc', 'ht', 'lbm', 'bmi', 'wt','pcBfat')])
+
+#view(x_y3)
+summary(x_y3)
+summary(ais_3)
+
+cor(ais_3[,c('hg', 'rcc', 'hc', 'ht', 'lbm', 'bmi', 'wt','pcBfat')])
+cor(x_y3[,c('hg', 'rcc', 'hc', 'ht', 'lbm', 'bmi', 'wt','pcBfat')])
+```
+```{r}
+#8 Nodes
+#ais data from the DAAG package
+ais_3 <- ais %>% dplyr::select(hg, rcc, hc, ht, lbm, bmi, wt, pcBfat) 
+#set structure
+bn_struct3 <- model2network("[pcBfat][hg|lbm][ht][wt|pcBfat:ht][lbm|ht:wt][bmi|lbm:wt][rcc|hg][hc|hg:rcc]")
+bn_struct3
+#Using plot network 
+plot.network(bn_struct3)
+
+
+
+#fit the parameters of a Bayesian Network conditional on its structure
+#and gives data set
+bn_mod3 <- bn.fit(bn_struct3, data = ais_3, method = "mle")
+#view conditional probability tables and Guassian Distribution
+bn_mod3
+#simulate new data 
+ais_sim3 <- rbn(bn_mod3, 202)
+
+set.seed(120)
+#means of ht, wt, lbm, bmi, hg, hc, rcc, pcBfat
+mu_x <- mean(ais_sim3$lbm)
+mu_y <- mean(ais_sim3$wt)
+mu_z <- mean(ais_sim3$ht)
+mu_a <- mean(ais_sim3$bmi)
+mu_b <- mean(ais_sim3$hg)
+mu_c <- mean(ais_sim3$hc)
+mu_d <- mean(ais_sim3$rcc)
+mu_e <- mean(ais_sim3$pcBfat)
+
+#mean matrix
+mu3 <- c(mu_b, mu_d, mu_c, mu_z, mu_x, mu_a, mu_y, mu_e)
+
+#variance-covariance matrix for hg, hc and rcc
+cov.matrix3 <- cov(ais_sim3[,c('hg','rcc','hc','ht','lbm','bmi','wt','pcBfat')])
+
+#multivariate normal 
+x_y3 <- mvrnorm(n = 202, mu3, cov.matrix3)
+
+cor(x_y3[,c('hg', 'rcc', 'hc', 'ht', 'lbm', 'bmi', 'wt','pcBfat')])
+
+#view(x_y3)
+summary(x_y3)
+summary(ais_3)
+
+cor(ais_3[,c('hg', 'rcc', 'hc', 'ht', 'lbm', 'bmi', 'wt','pcBfat')])
+cor(x_y3[,c('hg', 'rcc', 'hc', 'ht', 'lbm', 'bmi', 'wt','pcBfat')])
+```
+```{r}
+#plots <- list(plot5, plot6, plot7, plot8)
+#layout <- rbind(c(1,2),c(3,4))
+#grid.arrange(grobs=plots, layout_matrix = layout)
+```
+
